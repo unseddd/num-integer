@@ -22,7 +22,7 @@ extern crate std;
 extern crate num_traits as traits;
 
 use core::mem;
-use core::ops::Add;
+use core::ops::{Add, Shl, Shr};
 
 use traits::{Num, Signed, Zero};
 
@@ -34,7 +34,9 @@ mod average;
 pub use average::Average;
 pub use average::{average_ceil, average_floor};
 
-pub trait Integer: Sized + Num + PartialOrd + Ord + Eq {
+pub trait Integer:
+    Sized + Num + Shr<Self, Output = Self> + Shl<Self, Output = Self> + PartialOrd + Ord + Eq
+{
     /// Floored integer division.
     ///
     /// # Examples
@@ -166,36 +168,75 @@ pub trait Integer: Sized + Num + PartialOrd + Ord + Eq {
     where
         Self: Clone,
     {
-        let mut s = (Self::zero(), Self::one());
-        let mut t = (Self::one(), Self::zero());
-        let mut r = (other.clone(), self.clone());
-
-        while !r.0.is_zero() {
-            let q = r.1.clone() / r.0.clone();
-            let f = |mut r: (Self, Self)| {
-                mem::swap(&mut r.0, &mut r.1);
-                r.0 = r.0 - q.clone() * r.1.clone();
-                r
-            };
-            r = f(r);
-            s = f(s);
-            t = f(t);
+        if self <= &Self::zero() || other <= &Self::zero() {
+            panic!("base and other must be positive, non-zero integers");
         }
 
-        if r.1 >= Self::zero() {
-            ExtendedGcd {
-                gcd: r.1,
-                x: s.1,
-                y: t.1,
-                _hidden: (),
-            }
+        let mut echs = self.clone();
+        let mut why = other.clone();
+
+        let mut gg = Self::one();
+        let one = Self::one();
+
+        while echs.is_even() && why.is_even() {
+            echs = echs >> one.clone();
+            why = why >> one.clone();
+            gg = gg << one.clone();
+        }
+
+        let mut xx = echs.clone();
+        let mut yy = if why < Self::zero() {
+            Self::zero() - why.clone()
         } else {
-            ExtendedGcd {
-                gcd: Self::zero() - r.1,
-                x: Self::zero() - s.1,
-                y: Self::zero() - t.1,
-                _hidden: (),
+            why.clone()
+        };
+
+        let mut ba = Self::one();
+        let mut bb = Self::zero();
+        let mut bc = Self::zero();
+        let mut bd = Self::one();
+
+        while !xx.is_zero() {
+            while xx.is_even() {
+                xx = xx >> one.clone();
+
+                if ba.is_odd() || bb.is_odd() {
+                    ba = ba + why.clone();
+                    bb = bb - echs.clone();
+                }
+
+                ba = ba >> one.clone();
+                bb = bb >> one.clone();
             }
+
+            while yy.is_even() {
+                yy = yy >> one.clone();
+
+                if bc.is_odd() || bd.is_odd() {
+                    bc = bc + why.clone();
+                    bd = bd - echs.clone();
+                }
+
+                bc = bc >> one.clone();
+                bd = bd >> one.clone();
+            }
+
+            if xx >= yy {
+                xx = xx - yy.clone();
+                ba = ba - bc.clone();
+                bb = bb - bd.clone();
+            } else {
+                yy = yy - xx.clone();
+                bc = bc - ba.clone();
+                bd = bd - bb.clone();
+            }
+        }
+
+        ExtendedGcd {
+            gcd: gg * yy,
+            x: bc,
+            y: bd,
+            _hidden: (),
         }
     }
 
